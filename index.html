@@ -223,10 +223,9 @@ input[type=number] { -moz-appearance: textfield; }
     <button class="date-arrow" onclick="changeDate(1)">&#8250;</button>
   </div>
 
-  <div class="sync-bar" onclick="openSyncModal()">
-    <div class="sync-dot" id="syncDot"></div>
-    <span class="sync-text" id="syncText">Not connected</span>
-    <span class="sync-link">Connect Drive</span>
+  <div class="sync-bar">
+    <div class="sync-dot on" id="syncDot"></div>
+    <span class="sync-text" id="syncText">Connected to family Google Sheet</span>
   </div>
 
   <div class="cards" id="cards"></div>
@@ -296,6 +295,12 @@ function loadAll(){
   try{state=JSON.parse(localStorage.getItem('boulaFitness')||'{}');}catch{state={};}
   try{goals=JSON.parse(localStorage.getItem('boulaGoals')||'{}');}catch{goals={};}
   try{sheetConfig=JSON.parse(localStorage.getItem('boulaSheet')||'{}');}catch{sheetConfig={};}
+// Pre-connected for the whole family
+if(!sheetConfig.sheetId){
+  sheetConfig.sheetId='13utZOHnZyY1c6VYFPYhT1ObhCJXzds7ONAnPwhlGjdU';
+  sheetConfig.scriptId='https://script.google.com/macros/s/AKfycbyI4wcJ-X1IohHNERYdZEsFbAEuS8zAsbeVhrnRSgyX-O2y-Ib9taXrmmaH5ogUlGQWUg/exec';
+  localStorage.setItem('boulaSheet',JSON.stringify(sheetConfig));
+}
 }
 function saveAll(){
   localStorage.setItem('boulaFitness',JSON.stringify(state));
@@ -878,12 +883,32 @@ function refreshGoals(){
       <span class="goal-del" onclick="removeGoal(${i})">×</span>
     </div>`).join('');
 }
-function saveDay(){
+async function saveDay(){
   if(currentMember==='family'){render();return;}
   saveAll();
-  showToast('✅ Day saved!');
   if(weekChart){weekChart.destroy();weekChart=null;}
   setTimeout(()=>drawChart(member()),80);
+  // Sync to Google Sheet
+  const d=getDay(currentMember,currentDate);
+  const row=[
+    currentMember, currentDate,
+    d.steps||0, d.pushups||0, d.situps||0,
+    d.jumpRopeMinutes||0, d.weight||'',
+    (d.workouts||[]).join(', '),
+    LIFTS.map(l=>`${l}:${(d.lifts||{})[l]||0}lbs x${(d.liftReps||{})[l]||0}reps x${(d.liftSets||{})[l]||0}sets`).join(' | '),
+    (d.food||[]).map(f=>`${f.name}(${f.cals}cal)`).join(', '),
+    (d.food||[]).reduce((s,f)=>s+(f.cals||0),0)
+  ];
+  try {
+    await fetch(sheetConfig.scriptId, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sheetId:sheetConfig.sheetId, row})
+    });
+    showToast('✅ Saved and synced!');
+  } catch(err) {
+    showToast('✅ Saved locally');
+  }
 }
 function openSyncModal(){document.getElementById('syncModal').classList.add('open');}
 function closeSyncModal(){document.getElementById('syncModal').classList.remove('open');}
